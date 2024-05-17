@@ -5,3 +5,6 @@ target = "riscv64gc-unknown-none-elf"
 rustflags = [
     "-Clink-arg=-Tsrc/linker.ld", "-Cforce-frame-pointers=yes"
 ]
+
+riscv = { git = "https://gitee.com/rcore-os/riscv", features = ["inline-asm"] }
+virtio-drivers = { git = "https://gitee.com/rcore-os/virtio-drivers", rev = "4ee80e5" }
