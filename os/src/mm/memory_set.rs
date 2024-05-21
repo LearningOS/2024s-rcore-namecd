@@ -33,6 +33,7 @@ lazy_static! {
         Arc::new(unsafe { UPSafeCell::new(MemorySet::new_kernel()) });
 }
 /// address space
+/// 一个虚拟地址的地址空间就是一个页表 + 多个逻辑段
 pub struct MemorySet {
     page_table: PageTable,
     areas: Vec<MapArea>,
@@ -287,7 +288,22 @@ impl MemorySet {
             false
         }
     }
-
+    /// unmap the area
+    pub fn unalloc_area(&mut self, start: VirtAddr, end: VirtAddr) -> bool {
+        if let Some(area) = self
+            .areas
+            .iter_mut()
+            .find(|area| area.vpn_range.get_start() == start.floor())
+        {
+            for vpn in VPNRange::new(start.floor(), end.ceil()) {
+                area.unmap_one(&mut self.page_table, vpn);
+            }
+            true
+        } 
+        else {
+            false
+        }
+    }
     /// append the area to new_end
     #[allow(unused)]
     pub fn append_to(&mut self, start: VirtAddr, new_end: VirtAddr) -> bool {
@@ -302,8 +318,21 @@ impl MemorySet {
             false
         }
     }
+
+    /// whether the area is mapped
+    pub fn check_overlap(&self, start: VirtAddr, end: VirtAddr) -> bool {
+        self.areas.iter().any(|area| {
+            let area_start : usize = area.vpn_range.get_start().into();
+            let area_end : usize = area.vpn_range.get_end().into();
+            let start : usize = start.into();
+            let end :usize = end.into();
+            (start >= area_start && start < area_end) || (end > area_start && end <= area_end)
+        })
+    }
+    
 }
 /// map area structure, controls a contiguous piece of virtual memory
+/// 逻辑段
 pub struct MapArea {
     vpn_range: VPNRange,
     data_frames: BTreeMap<VirtPageNum, FrameTracker>,
@@ -335,6 +364,7 @@ impl MapArea {
             map_perm: another.map_perm,
         }
     }
+    /// vpn通过对应的映射方式映射到ppn
     pub fn map_one(&mut self, page_table: &mut PageTable, vpn: VirtPageNum) {
         let ppn: PhysPageNum;
         match self.map_type {
@@ -348,6 +378,7 @@ impl MapArea {
             }
         }
         let pte_flags = PTEFlags::from_bits(self.map_perm.bits).unwrap();
+        // 确定映射方式之后，通过page_table的map方法找到一个PTE，然后将vpn映射到ppn
         page_table.map(vpn, ppn, pte_flags);
     }
     pub fn unmap_one(&mut self, page_table: &mut PageTable, vpn: VirtPageNum) {

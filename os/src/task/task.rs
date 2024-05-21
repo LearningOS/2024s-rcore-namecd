@@ -1,7 +1,7 @@
 //! Types related to task management & Functions for completely changing TCB
 use super::TaskContext;
 use super::{kstack_alloc, pid_alloc, KernelStack, PidHandle};
-use crate::config::{TRAP_CONTEXT_BASE, BIG_STRIDE};
+use crate::config::{TRAP_CONTEXT_BASE, BIG_STRIDE,MAX_SYSCALL_NUM};
 use crate::mm::{MemorySet, PhysPageNum, VirtAddr, KERNEL_SPACE};
 use crate::sync::UPSafeCell;
 use crate::trap::{trap_handler, TrapContext};
@@ -77,6 +77,11 @@ pub struct TaskControlBlockInner {
 
     /// running length
     pub stride: usize,
+    /// The syscall times of the task
+    pub task_syscall_times : [u32; MAX_SYSCALL_NUM],
+
+    /// The time of the task
+    pub task_time : usize,
 }
 
 impl TaskControlBlockInner {
@@ -132,6 +137,8 @@ impl TaskControlBlock {
                     stride: 0,
                     priority: 16,
                     pass: BIG_STRIDE / 16,
+                    task_syscall_times: [0; MAX_SYSCALL_NUM],
+                    task_time: 0,
                 })
             },
         };
@@ -146,7 +153,30 @@ impl TaskControlBlock {
         );
         task_control_block
     }
-
+    /// alloc meomery
+    pub fn alloc_memory(&mut self, start : usize, len : usize, _permission : usize) -> isize{
+        if self.memory_set.check_overlap(VirtAddr(start), VirtAddr(start + len)){
+            return -1;
+        }
+        
+        let mut permission = MapPermission::from_bits_truncate((_permission as u8) << 1);
+        permission.set(MapPermission::U, true);
+        
+        self.memory_set.insert_framed_area(VirtAddr(start), VirtAddr(start + len), permission);
+        0
+        
+    } 
+    /// dealloc memory
+    pub fn dealloc_memory(&mut self, start : usize, len : usize) -> isize{
+        if !self.memory_set.check_overlap(VirtAddr(start), VirtAddr(start + len)){
+            return -1;
+        }
+        let flag : bool = self.memory_set.unalloc_area(VirtAddr(start), VirtAddr(start + len));
+        if !flag {
+            return -1;
+        }
+        0
+    }
     /// Load a new elf to replace the original application address space and start execution
     pub fn exec(&self, elf_data: &[u8]) {
         // memory_set with elf program headers/trampoline/trap context/user stack

@@ -184,6 +184,9 @@ impl PhysPageNum {
     /// Get the reference of page(array of bytes)
     pub fn get_bytes_array(&self) -> &'static mut [u8] {
         let pa: PhysAddr = (*self).into();
+        // 将物理页号转换成物理地址，从这个物理地址(物理页号所指向的位置)开始,返回切片的引用;
+        // 物理页号都是按照4KB对齐的，整个物理页帧的起始地址就是物理页号的地址，
+        // 所以这里直接将物理页号转换成物理地址
         unsafe { core::slice::from_raw_parts_mut(pa.0 as *mut u8, 4096) }
     }
     /// Get the mutable reference of physical address

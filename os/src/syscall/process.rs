@@ -4,15 +4,17 @@ use alloc::vec::Vec;
 use crate::{
     config::{MAX_SYSCALL_NUM, TRAP_CONTEXT_BASE, BIG_STRIDE},
     loader::get_app_data_by_name,
-    mm::{translated_refmut, translated_str, VirtAddr, MemorySet, KERNEL_SPACE,},
+    mm::{translated_refmut, translated_str, VirtAddr, MemorySet, KERNEL_SPACE,translated_byte_buffer,},
     task::{
         add_task, current_task, current_user_token, exit_current_and_run_next,
         suspend_current_and_run_next, TaskStatus, pid_alloc, kstack_alloc, TaskControlBlock, TaskControlBlockInner,
-        TaskContext, 
+        TaskContext, change_program_brk, get_task_info, current_task_alloc_memory, current_task_dealloc_memory,
     },
     trap::{TrapContext, trap_handler},
     sync::UPSafeCell,
+    timer::get_time_us,
 };
+use core::mem::size_of;
 
 #[repr(C)]
 #[derive(Debug)]
@@ -121,40 +123,65 @@ pub fn sys_waitpid(pid: isize, exit_code_ptr: *mut i32) -> isize {
 /// HINT: You might reimplement it with virtual memory management.
 /// HINT: What if [`TimeVal`] is splitted by two pages ?
 pub fn sys_get_time(_ts: *mut TimeVal, _tz: usize) -> isize {
-    trace!(
-        "kernel:pid[{}] sys_get_time NOT IMPLEMENTED",
-        current_task().unwrap().pid.0
-    );
-    -1
+    trace!("kernel: sys_get_time");
+    let mut buffers = translated_byte_buffer(current_user_token(), _ts as *const u8, size_of::<TimeVal>());
+    if buffers.len() == 0 {
+        return -1;
+    }
+    let time_us = get_time_us();
+    let time_val = TimeVal {
+        sec: time_us / 1_000_000,
+        usec: time_us % 1_000_000,
+    };
+    let mut time_val_ptr = &time_val as *const TimeVal as *const u8;
+    for  buffer in buffers.iter_mut() {
+        unsafe {
+            buffer.copy_from_slice(core::slice::from_raw_parts(time_val_ptr, buffer.len()));
+            time_val_ptr = time_val_ptr.add(buffer.len());
+        } 
+    }
+    
+    0
 }
 
 /// YOUR JOB: Finish sys_task_info to pass testcases
 /// HINT: You might reimplement it with virtual memory management.
 /// HINT: What if [`TaskInfo`] is splitted by two pages ?
 pub fn sys_task_info(_ti: *mut TaskInfo) -> isize {
-    trace!(
-        "kernel:pid[{}] sys_task_info NOT IMPLEMENTED",
-        current_task().unwrap().pid.0
-    );
-    -1
+    trace!("kernel: sys_task_info NOT IMPLEMENTED YET!");
+    let buffers = translated_byte_buffer(current_user_token(), _ti as *const u8, size_of::<TaskInfo>());
+    if buffers.len() == 0 {
+        return -1;
+    }
+    let (status, syscall_times, time) = get_task_info();
+    let task_info = TaskInfo {
+        status,
+        syscall_times,
+        time,
+    };
+    let mut task_info_ptr = &task_info as *const TaskInfo as *const u8;
+    for buffer in buffers {
+        unsafe {
+            buffer.copy_from_slice(core::slice::from_raw_parts(task_info_ptr, buffer.len()));
+            task_info_ptr = task_info_ptr.add(buffer.len());
+        }
+    }
+    0
 }
 
 /// YOUR JOB: Implement mmap.
 pub fn sys_mmap(_start: usize, _len: usize, _port: usize) -> isize {
-    trace!(
-        "kernel:pid[{}] sys_mmap NOT IMPLEMENTED",
-        current_task().unwrap().pid.0
-    );
-    -1
+    trace!("kernel: sys_mmap NOT IMPLEMENTED YET!");
+    if _port & !0x7 != 0 || _port & 0x7 == 0{
+        return -1;
+    }
+    current_task_alloc_memory(_start, _len, _port)
 }
 
 /// YOUR JOB: Implement munmap.
 pub fn sys_munmap(_start: usize, _len: usize) -> isize {
-    trace!(
-        "kernel:pid[{}] sys_munmap NOT IMPLEMENTED",
-        current_task().unwrap().pid.0
-    );
-    -1
+    trace!("kernel: sys_munmap NOT IMPLEMENTED YET!");
+    current_task_dealloc_memory(_start, _len)
 }
 
 /// change data segment size
