@@ -5,6 +5,7 @@ use crate::mm::{
     kernel_stack_position, MapPermission, MemorySet, PhysPageNum, VirtAddr, KERNEL_SPACE,
 };
 use crate::trap::{trap_handler, TrapContext};
+use crate::config::MAX_SYSCALL_NUM;
 
 /// The task control block (TCB) of a task.
 pub struct TaskControlBlock {
@@ -28,6 +29,12 @@ pub struct TaskControlBlock {
 
     /// Program break
     pub program_brk: usize,
+
+    /// The syscall times of the task
+    pub task_syscall_times : [u32; MAX_SYSCALL_NUM],
+
+    /// The time of the task
+    pub task_time : usize,
 }
 
 impl TaskControlBlock {
@@ -38,6 +45,30 @@ impl TaskControlBlock {
     /// get the user token
     pub fn get_user_token(&self) -> usize {
         self.memory_set.token()
+    }
+    /// alloc memory
+    pub fn alloc_memory(&mut self, start : usize, len : usize, _permission : usize) -> isize{
+        if self.memory_set.check_overlap(VirtAddr(start), VirtAddr(start + len)){
+            return -1;
+        }
+        
+        let mut permission = MapPermission::from_bits_truncate((_permission as u8) << 1);
+        permission.set(MapPermission::U, true);
+        
+        self.memory_set.insert_framed_area(VirtAddr(start), VirtAddr(start + len), permission);
+        0
+        
+    } 
+    /// dealloc memory
+    pub fn dealloc_memory(&mut self, start : usize, len : usize) -> isize{
+        if !self.memory_set.check_overlap(VirtAddr(start), VirtAddr(start + len)){
+            return -1;
+        }
+        let flag : bool = self.memory_set.unalloc_area(VirtAddr(start), VirtAddr(start + len));
+        if !flag {
+            return -1;
+        }
+        0
     }
     /// Based on the elf info in program, build the contents of task in a new address space
     pub fn new(elf_data: &[u8], app_id: usize) -> Self {
@@ -63,6 +94,8 @@ impl TaskControlBlock {
             base_size: user_sp,
             heap_bottom: user_sp,
             program_brk: user_sp,
+            task_syscall_times: [0; MAX_SYSCALL_NUM],
+            task_time: 0,
         };
         // prepare TrapContext in user space
         let trap_cx = task_control_block.get_trap_cx();

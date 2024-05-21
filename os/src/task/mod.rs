@@ -24,6 +24,9 @@ pub use task::{TaskControlBlock, TaskStatus};
 
 pub use context::TaskContext;
 
+pub use crate::config::MAX_SYSCALL_NUM;
+pub use crate::timer::get_time_ms;
+
 /// The task manager, where all the tasks are managed.
 ///
 /// Functions implemented on `TaskManager` deals with all task state transitions
@@ -79,6 +82,7 @@ impl TaskManager {
         let mut inner = self.inner.exclusive_access();
         let next_task = &mut inner.tasks[0];
         next_task.task_status = TaskStatus::Running;
+        next_task.task_time = get_time_ms();
         let next_task_cx_ptr = &next_task.task_cx as *const TaskContext;
         drop(inner);
         let mut _unused = TaskContext::zero_init();
@@ -141,6 +145,9 @@ impl TaskManager {
             let current = inner.current_task;
             inner.tasks[next].task_status = TaskStatus::Running;
             inner.current_task = next;
+            if inner.tasks[current].task_time == 0 {
+                inner.tasks[current].task_time = get_time_ms();
+            }
             let current_task_cx_ptr = &mut inner.tasks[current].task_cx as *mut TaskContext;
             let next_task_cx_ptr = &inner.tasks[next].task_cx as *const TaskContext;
             drop(inner);
@@ -152,6 +159,30 @@ impl TaskManager {
         } else {
             panic!("All applications completed!");
         }
+    }
+    fn get_task_info(&self) -> (TaskStatus, [u32; MAX_SYSCALL_NUM], usize){
+        let inner = self.inner.exclusive_access();
+        let current = inner.current_task;
+        let task = &inner.tasks[current];
+        (task.task_status, task.task_syscall_times, task.task_time)
+    }
+    fn increase_syscall_times(&self, syscall_id: usize){
+        let mut inner = self.inner.exclusive_access();
+        let current = inner.current_task;
+        inner.tasks[current].task_syscall_times[syscall_id] += 1;
+    }
+    /// alloc meomory for current task
+    fn current_task_alloc_memory(&self, start : usize, len : usize,  permission : usize) -> isize{
+        let mut inner = self.inner.exclusive_access();
+        let current = inner.current_task;
+        inner.tasks[current].alloc_memory(start, len, permission)
+    }
+
+    /// unalloc meomory for current task
+    fn current_task_dealloc_memory(&self, start : usize, len : usize) -> isize{
+        let mut inner = self.inner.exclusive_access();
+        let current = inner.current_task;
+        inner.tasks[current].dealloc_memory(start, len)
     }
 }
 
@@ -197,8 +228,24 @@ pub fn current_user_token() -> usize {
 pub fn current_trap_cx() -> &'static mut TrapContext {
     TASK_MANAGER.get_current_trap_cx()
 }
+/// Alloc the memory set of the current 'Running' task
+pub fn current_task_alloc_memory(start : usize, len : usize,  permission : usize) -> isize {
+    TASK_MANAGER.current_task_alloc_memory(start, len, permission)
+}
 
+/// Unalloc the memory set of the current 'Running' task
+pub fn current_task_dealloc_memory(start : usize, len : usize) -> isize {
+    TASK_MANAGER.current_task_dealloc_memory(start, len)
+}
 /// Change the current 'Running' task's program break
 pub fn change_program_brk(size: i32) -> Option<usize> {
     TASK_MANAGER.change_current_program_brk(size)
+}
+///increase the syscall times
+pub fn increase_syscall_times(syscall_id: usize){
+    TASK_MANAGER.increase_syscall_times(syscall_id);
+}
+/// get task info
+pub fn get_task_info() -> (TaskStatus, [u32; MAX_SYSCALL_NUM], usize){
+    TASK_MANAGER.get_task_info()
 }
