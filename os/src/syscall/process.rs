@@ -1,6 +1,6 @@
 //! Process management syscalls
 use crate::{
-    config::MAX_SYSCALL_NUM,
+    config::{MAX_SYSCALL_NUM, },
     task::{
         change_program_brk, exit_current_and_run_next, suspend_current_and_run_next, TaskStatus,
         current_user_token, get_task_info, current_task_alloc_memory, current_task_dealloc_memory,
@@ -47,7 +47,7 @@ pub fn sys_yield() -> isize {
 /// HINT: What if [`TimeVal`] is splitted by two pages ?
 pub fn sys_get_time(_ts: *mut TimeVal, _tz: usize) -> isize {
     trace!("kernel: sys_get_time");
-    let mut buffers = translated_byte_buffer(current_user_token(), _ts as *const u8, size_of::<TimeVal>());
+    let buffers = translated_byte_buffer(current_user_token(), _ts as *const u8, size_of::<TimeVal>());
     if buffers.len() == 0 {
         return -1;
     }
@@ -57,9 +57,9 @@ pub fn sys_get_time(_ts: *mut TimeVal, _tz: usize) -> isize {
         usec: time_us % 1_000_000,
     };
     let mut time_val_ptr = &time_val as *const TimeVal as *const u8;
-    for  buffer in buffers.iter_mut() {
+    for  buffer in buffers {
         unsafe {
-            buffer.copy_from_slice(core::slice::from_raw_parts(time_val_ptr, buffer.len()));
+            time_val_ptr.copy_to(buffer.as_mut_ptr(), buffer.len());
             time_val_ptr = time_val_ptr.add(buffer.len());
         } 
     }
@@ -85,7 +85,7 @@ pub fn sys_task_info(_ti: *mut TaskInfo) -> isize {
     let mut task_info_ptr = &task_info as *const TaskInfo as *const u8;
     for buffer in buffers {
         unsafe {
-            buffer.copy_from_slice(core::slice::from_raw_parts(task_info_ptr, buffer.len()));
+            task_info_ptr.copy_to(buffer.as_mut_ptr(), buffer.len());
             task_info_ptr = task_info_ptr.add(buffer.len());
         }
     }
@@ -95,7 +95,7 @@ pub fn sys_task_info(_ti: *mut TaskInfo) -> isize {
 // YOUR JOB: Implement mmap.
 pub fn sys_mmap(_start: usize, _len: usize, _port: usize) -> isize {
     trace!("kernel: sys_mmap NOT IMPLEMENTED YET!");
-    if _port & !0x7 != 0 || _port & 0x7 == 0{
+    if _port & !0x7 != 0 || _port & 0x7 == 0 {
         return -1;
     }
     current_task_alloc_memory(_start, _len, _port)

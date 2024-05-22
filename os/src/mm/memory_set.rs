@@ -249,15 +249,20 @@ impl MemorySet {
         }
     }
     /// unmap the area
-    pub fn unalloc_area(&mut self, start: VirtAddr, end: VirtAddr) -> bool {
-        if let Some(area) = self
-            .areas
-            .iter_mut()
-            .find(|area| area.vpn_range.get_start() == start.floor())
-        {
-            for vpn in VPNRange::new(start.floor(), end.ceil()) {
-                area.unmap_one(&mut self.page_table, vpn);
+    pub fn dealloc_area(&mut self, start: VirtAddr, end: VirtAddr) -> bool {
+        if let Some(i) = {
+            let mut result = None;
+            for(i, area) in self.areas.iter().enumerate() {
+                if area.vpn_range.get_start() == start.floor() && area.vpn_range.get_end() == end.ceil(){
+                    result = Some(i);
+                    break;
+                }
             }
+            result
+        }
+        {   
+            self.areas[i].unmap(&mut self.page_table);
+            self.areas.remove(i);
             true
         } 
         else {
@@ -281,13 +286,31 @@ impl MemorySet {
 
     /// whether the area is mapped
     pub fn check_overlap(&self, start: VirtAddr, end: VirtAddr) -> bool {
-        self.areas.iter().any(|area| {
-            let area_start : usize = area.vpn_range.get_start().into();
-            let area_end : usize = area.vpn_range.get_end().into();
-            let start : usize = start.into();
-            let end :usize = end.into();
-            (start >= area_start && start < area_end) || (end > area_start && end <= area_end)
-        })
+        let start_va = start.floor();
+        let end_va = end.ceil();
+        let vpn_range = VPNRange::new(start_va, end_va);
+        for vpn_i in vpn_range {
+            if let Some(pte) = self.translate(vpn_i) {
+                if pte.is_valid() {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+    /// check blank area
+    pub fn check_blank (&self, start : VirtAddr, end: VirtAddr) -> bool {
+        let start_va = start.floor();
+        let end_va = end.ceil();
+        let vpn_range = VPNRange::new(start_va, end_va);
+        for vpn_i in vpn_range {
+            if let Some(pte) = self.translate(vpn_i) {
+                if !pte.is_valid() {
+                    return true;
+                }
+            }
+        }
+        false
     }
     
 }

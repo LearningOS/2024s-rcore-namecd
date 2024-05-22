@@ -164,7 +164,7 @@ impl TaskManager {
         let inner = self.inner.exclusive_access();
         let current = inner.current_task;
         let task = &inner.tasks[current];
-        (task.task_status, task.task_syscall_times, task.task_time)
+        (task.task_status, task.task_syscall_times, get_time_ms() - task.task_time)
     }
     fn increase_syscall_times(&self, syscall_id: usize){
         let mut inner = self.inner.exclusive_access();

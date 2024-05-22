@@ -48,23 +48,27 @@ impl TaskControlBlock {
     }
     /// alloc memory
     pub fn alloc_memory(&mut self, start : usize, len : usize, _permission : usize) -> isize{
-        if self.memory_set.check_overlap(VirtAddr(start), VirtAddr(start + len)){
+        let start_vaddr = VirtAddr(start);
+        let end_vaddr = VirtAddr(start + len);
+        if !start_vaddr.aligned() || self.memory_set.check_overlap(start_vaddr, end_vaddr) {
             return -1;
         }
-        
+
         let mut permission = MapPermission::from_bits_truncate((_permission as u8) << 1);
         permission.set(MapPermission::U, true);
-        
-        self.memory_set.insert_framed_area(VirtAddr(start), VirtAddr(start + len), permission);
+
+        self.memory_set.insert_framed_area(start_vaddr, end_vaddr, permission);
         0
         
     } 
     /// dealloc memory
     pub fn dealloc_memory(&mut self, start : usize, len : usize) -> isize{
-        if !self.memory_set.check_overlap(VirtAddr(start), VirtAddr(start + len)){
+        let start_vaddr = VirtAddr(start);
+        let end_vaddr = VirtAddr(start + len);
+        if self.memory_set.check_blank(start_vaddr, end_vaddr) || !start_vaddr.aligned(){
             return -1;
         }
-        let flag : bool = self.memory_set.unalloc_area(VirtAddr(start), VirtAddr(start + len));
+        let flag : bool = self.memory_set.dealloc_area(start_vaddr, end_vaddr);
         if !flag {
             return -1;
         }
