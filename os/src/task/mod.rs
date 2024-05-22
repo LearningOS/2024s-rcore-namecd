@@ -26,7 +26,7 @@ use alloc::sync::Arc;
 use lazy_static::*;
 pub use manager::{fetch_task, TaskManager};
 use switch::__switch;
-pub use task::{TaskControlBlock, TaskStatus, TaskControlBlockInner};
+pub use task::{TaskControlBlock, TaskStatus, TaskControlBlockInner, };
 
 pub use context::TaskContext;
 pub use id::{kstack_alloc, pid_alloc, KernelStack, PidHandle};
@@ -119,11 +119,9 @@ lazy_static! {
 pub fn add_initproc() {
     add_task(INITPROC.clone());
 }
-///increase the syscall times
-pub fn increase_syscall_times(syscall_id: usize){
-    TASK_MANAGER.increase_syscall_times(syscall_id);
-}
-/// get task info
-pub fn get_task_info() -> (TaskStatus, [u32; MAX_SYSCALL_NUM], usize){
-    TASK_MANAGER.get_task_info()
+
+/// increase syscall times
+pub fn increase_syscall_times(syscall_id : usize){
+    let task = current_task().unwrap();
+    task.increase_syscall_times(syscall_id);
 }

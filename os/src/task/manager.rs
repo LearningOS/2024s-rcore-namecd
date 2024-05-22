@@ -4,6 +4,7 @@ use crate::sync::UPSafeCell;
 use alloc::collections::VecDeque;
 use alloc::sync::Arc;
 use lazy_static::*;
+use crate::timer::get_time_ms;
 ///A array of `TaskControlBlock` that is thread-safe
 pub struct TaskManager {
     ready_queue: VecDeque<Arc<TaskControlBlock>>,
@@ -36,10 +37,14 @@ impl TaskManager {
         let min_stride_task = self.ready_queue.get_mut(min_idx);
         if let Some(task) = min_stride_task {
             let mut inner = task.inner.exclusive_access();
+            if inner.task_time == 0 {
+                inner.task_time = get_time_ms();
+            }
             inner.stride += inner.pass;
         }
         self.ready_queue.remove(min_idx)
     }
+    
 }
 
 lazy_static! {

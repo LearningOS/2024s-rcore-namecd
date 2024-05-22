@@ -2,12 +2,13 @@
 use super::TaskContext;
 use super::{kstack_alloc, pid_alloc, KernelStack, PidHandle};
 use crate::config::{TRAP_CONTEXT_BASE, BIG_STRIDE,MAX_SYSCALL_NUM};
-use crate::mm::{MemorySet, PhysPageNum, VirtAddr, KERNEL_SPACE};
+use crate::mm::{MemorySet, PhysPageNum, VirtAddr, KERNEL_SPACE, MapPermission};
 use crate::sync::UPSafeCell;
 use crate::trap::{trap_handler, TrapContext};
 use alloc::sync::{Arc, Weak};
 use alloc::vec::Vec;
 use core::cell::RefMut;
+use crate::timer::get_time_ms;
 
 /// Task control block structure
 ///
@@ -101,6 +102,33 @@ impl TaskControlBlockInner {
     pub fn is_zombie(&self) -> bool {
         self.get_status() == TaskStatus::Zombie
     }
+    /// alloc meomery
+    pub fn alloc_memory(&mut self, start : usize, len : usize, _permission : usize) -> isize{
+        let start_vaddr = VirtAddr(start);
+        let end_vaddr = VirtAddr(start + len);
+        if !start_vaddr.aligned() || self.memory_set.check_overlap(start_vaddr, end_vaddr) {
+            return -1;
+        }
+
+        let mut permission = MapPermission::from_bits_truncate((_permission as u8) << 1);
+        permission.set(MapPermission::U, true);
+
+        self.memory_set.insert_framed_area(start_vaddr, end_vaddr, permission);
+        0
+    } 
+    /// dealloc memory
+    pub fn dealloc_memory(&mut self, start : usize, len : usize) -> isize{
+        let start_vaddr = VirtAddr(start);
+        let end_vaddr = VirtAddr(start + len);
+        if self.memory_set.check_blank(start_vaddr, end_vaddr) || !start_vaddr.aligned(){
+            return -1;
+        }
+        let flag : bool = self.memory_set.dealloc_area(start_vaddr, end_vaddr);
+        if !flag {
+            return -1;
+        }
+        0
+    }
 }
 
 impl TaskControlBlock {
@@ -153,30 +181,17 @@ impl TaskControlBlock {
         );
         task_control_block
     }
-    /// alloc meomery
-    pub fn alloc_memory(&mut self, start : usize, len : usize, _permission : usize) -> isize{
-        if self.memory_set.check_overlap(VirtAddr(start), VirtAddr(start + len)){
-            return -1;
-        }
-        
-        let mut permission = MapPermission::from_bits_truncate((_permission as u8) << 1);
-        permission.set(MapPermission::U, true);
-        
-        self.memory_set.insert_framed_area(VirtAddr(start), VirtAddr(start + len), permission);
-        0
-        
-    } 
-    /// dealloc memory
-    pub fn dealloc_memory(&mut self, start : usize, len : usize) -> isize{
-        if !self.memory_set.check_overlap(VirtAddr(start), VirtAddr(start + len)){
-            return -1;
-        }
-        let flag : bool = self.memory_set.unalloc_area(VirtAddr(start), VirtAddr(start + len));
-        if !flag {
-            return -1;
-        }
-        0
+    /// get task info
+    pub fn get_task_info(&self) -> (TaskStatus, [u32; MAX_SYSCALL_NUM], usize){
+        let inner = self.inner.exclusive_access();
+        (inner.task_status, inner.task_syscall_times, get_time_ms() - inner.task_time)
     }
+    /// increase the syscall time
+    pub fn increase_syscall_times(&self, syscall_id: usize){
+        let mut inner = self.inner.exclusive_access();
+        inner.task_syscall_times[syscall_id] += 1;
+    }
+
     /// Load a new elf to replace the original application address space and start execution
     pub fn exec(&self, elf_data: &[u8]) {
         // memory_set with elf program headers/trampoline/trap context/user stack
@@ -238,6 +253,8 @@ impl TaskControlBlock {
                     priority: parent_inner.priority,
                     pass: parent_inner.pass,
                     stride: parent_inner.stride,
+                    task_syscall_times: [0; MAX_SYSCALL_NUM],
+                    task_time: 0,
                 })
             },
         });
