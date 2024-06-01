@@ -9,6 +9,7 @@ use crate::sync::UPSafeCell;
 use alloc::vec::Vec;
 use lazy_static::*;
 
+/// 进程标识符分配器
 pub struct RecycleAllocator {
     current: usize,
     recycled: Vec<usize>,
@@ -70,6 +71,7 @@ pub fn kernel_stack_position(app_id: usize) -> (usize, usize) {
 }
 
 /// Kernel stack for a process(task)
+/// KernelStack 存放Pid
 pub struct KernelStack(pub usize);
 
 /// allocate a new kernel stack

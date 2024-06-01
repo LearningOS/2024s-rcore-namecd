@@ -26,7 +26,7 @@ use alloc::sync::Arc;
 use lazy_static::*;
 pub use manager::{fetch_task, TaskManager};
 use switch::__switch;
-pub use task::{TaskControlBlock, TaskStatus};
+pub use task::{TaskControlBlock, TaskStatus, TaskControlBlockInner};
 
 pub use context::TaskContext;
 pub use id::{kstack_alloc, pid_alloc, KernelStack, PidHandle};
@@ -38,6 +38,8 @@ pub use processor::{
 /// Suspend the current 'Running' task and run the next task in task list.
 pub fn suspend_current_and_run_next() {
     // There must be an application running.
+
+    // 从处理器中取出当前正在运行的任务 Processor
     let task = take_current_task().unwrap();
 
     // ---- access current TCB exclusively
@@ -49,8 +51,10 @@ pub fn suspend_current_and_run_next() {
     // ---- release current PCB
 
     // push back to ready queue.
+    // 放到taskmanager的ready队列中
     add_task(task);
     // jump to scheduling cycle
+    
     schedule(task_cx_ptr);
 }
 

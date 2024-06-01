@@ -27,6 +27,8 @@ extern "C" {
 
 lazy_static! {
     /// The kernel's initial memory mapping(kernel address space)
+    /// 这个内核栈的意思是内核中的栈
+    /// 里面存放的app_kernel_space是用户态的内核空间
     pub static ref KERNEL_SPACE: Arc<UPSafeCell<MemorySet>> =
         Arc::new(unsafe { UPSafeCell::new(MemorySet::new_kernel()) });
 }

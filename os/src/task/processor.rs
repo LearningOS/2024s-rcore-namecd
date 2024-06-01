@@ -13,6 +13,7 @@ use alloc::sync::Arc;
 use lazy_static::*;
 
 /// Processor management structure
+/// 描述CPU 执行状态 的数据结构
 pub struct Processor {
     ///The task currently executing on the current processor
     current: Option<Arc<TaskControlBlock>>,
@@ -101,6 +102,8 @@ pub fn current_trap_cx() -> &'static mut TrapContext {
 }
 
 ///Return to idle control flow for new scheduling
+/// idle不会进入ready队列，只是一个标识
+/// 进程调度通过run_tasks实现，idle起辅助作用
 pub fn schedule(switched_task_cx_ptr: *mut TaskContext) {
     let mut processor = PROCESSOR.exclusive_access();
     let idle_task_cx_ptr = processor.get_idle_task_cx_ptr();
