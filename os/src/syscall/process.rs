@@ -2,7 +2,7 @@
 use alloc::sync::Arc;
 use alloc::vec::Vec;
 use crate::{
-    config::{MAX_SYSCALL_NUM, TRAP_CONTEXT_BASE,},
+    config::{MAX_SYSCALL_NUM, TRAP_CONTEXT_BASE, BIG_STRIDE},
     loader::get_app_data_by_name,
     mm::{translated_refmut, translated_str, VirtAddr, MemorySet, KERNEL_SPACE,},
     task::{
@@ -170,6 +170,7 @@ pub fn sys_sbrk(size: i32) -> isize {
 /// YOUR JOB: Implement spawn.
 /// HINT: fork + exec =/= spawn
 pub fn sys_spawn(_path: *const u8) -> isize {
+    
     // 相当于fork
     let current_task = current_task().unwrap();
     let mut parrent_inner = current_task.inner_exclusive_access();
@@ -203,10 +204,14 @@ pub fn sys_spawn(_path: *const u8) -> isize {
                     exit_code: 0,
                     heap_bottom: parrent_inner.heap_bottom,
                     program_brk: parrent_inner.program_brk,
+                    priority: parrent_inner.priority,
+                    pass: parrent_inner.pass,
+                    stride: parrent_inner.stride,
                 })
             },
         });
 
+        parrent_inner.children.push(task_control_block.clone());
         let trap_cx = task_control_block.inner_exclusive_access().get_trap_cx();
         *trap_cx = TrapContext::app_init_context(
             entry_point,
@@ -217,8 +222,6 @@ pub fn sys_spawn(_path: *const u8) -> isize {
         );
         trap_cx.x[10] = 0;
 
-        parrent_inner.children.push(task_control_block.clone());
-        
         let pid = task_control_block.pid.0;
 
         add_task(task_control_block);
@@ -232,9 +235,12 @@ pub fn sys_spawn(_path: *const u8) -> isize {
 
 // YOUR JOB: Set task priority.
 pub fn sys_set_priority(_prio: isize) -> isize {
-    trace!(
-        "kernel:pid[{}] sys_set_priority NOT IMPLEMENTED",
-        current_task().unwrap().pid.0
-    );
-    -1
+    if _prio < 2  {
+        return  -1;
+    } 
+    let task = current_task().unwrap();
+    let mut inner = task.inner_exclusive_access();
+    inner.priority = _prio as usize;
+    inner.pass = BIG_STRIDE / inner.priority;
+    _prio
 }
