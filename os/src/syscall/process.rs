@@ -202,11 +202,11 @@ pub fn sys_sbrk(size: i32) -> isize {
 pub fn sys_spawn(_path: *const u8) -> isize {
     
     // 相当于fork
-    let current_task = current_task().unwrap();
-    let mut parrent_inner = current_task.inner_exclusive_access();
+    let task = current_task().unwrap();
+    let mut parrent_inner = task.inner_exclusive_access();
 
     // 相当于exec
-    let token = current_user_token();
+    let token = parrent_inner.memory_set.token();
     let path = translated_str(token, _path);   // 翻译成app的名字
 
     if let Some(data) = get_app_data_by_name(path.as_str()) {
@@ -229,7 +229,7 @@ pub fn sys_spawn(_path: *const u8) -> isize {
                     task_cx: TaskContext::goto_trap_return(kernel_stack_top),
                     task_status: TaskStatus::Ready,
                     memory_set: memory_set,
-                    parent: Some(Arc::downgrade(&current_task)),
+                    parent: Some(Arc::downgrade(&task)),
                     children: Vec::new(),
                     exit_code: 0,
                     heap_bottom: parrent_inner.heap_bottom,
